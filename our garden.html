@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Our Garden</title>
+<style>
+:root{
+  --pink:#F4A6B8; --sage:#9CC5A1; --ink:#2b2b2b; --card:#ffffffcc; --bg1:#fdf3f6; --bg2:#eef6ee;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --ink:#f2f2f2; --card:#2a2a2ecc; --bg1:#241a1f; --bg2:#1a231d; }
+}
+:root[data-theme="dark"]{ --ink:#f2f2f2; --card:#2a2a2ecc; --bg1:#241a1f; --bg2:#1a231d; }
+html{ scroll-padding-top:env(safe-area-inset-top,0px); height:100%; }
+*{margin:0;box-sizing:border-box;}
+body{
+  height:100%; font-family:-apple-system,BlinkMacSystemFont,"SF Pro Rounded",sans-serif;
+  color:var(--ink); background:linear-gradient(160deg,var(--bg1),var(--bg2));
+  display:flex; flex-direction:column; align-items:center; padding:16px; gap:14px;
+  overflow-x:hidden;
+}
+h1{font-size:1.1rem; font-weight:700; padding-top:env(safe-area-inset-top,0px);}
+.sub{font-size:.78rem; opacity:.6; margin-top:-8px;}
+.card{
+  width:100%; max-width:420px; background:var(--card); backdrop-filter:blur(10px);
+  border-radius:22px; padding:18px; box-shadow:0 6px 24px rgba(0,0,0,.08);
+}
+.row{ display:flex; justify-content:space-between; align-items:center; font-size:.78rem; opacity:.7; }
+.qtext{ font-size:1rem; font-weight:600; margin:10px 0; }
+textarea{
+  width:100%; border-radius:14px; border:1px solid #0002; padding:10px; font-size:.9rem;
+  min-height:64px; resize:none; background:#fff8; color:var(--ink);
+}
+button{
+  border:none; border-radius:14px; padding:12px; font-size:.9rem; font-weight:600;
+  background:var(--pink); color:#3a1a22; width:100%; margin-top:10px;
+}
+select{ padding:8px; border-radius:10px; border:1px solid #0002; font-size:.85rem; background:#fff8; color:var(--ink); }
+.answers{ display:flex; flex-direction:column; gap:8px; margin-top:10px; }
+.a{ background:#0000000d; padding:10px; border-radius:12px; font-size:.85rem; }
+.locked{ text-align:center; font-size:.8rem; opacity:.6; padding:10px; }
+.pulse-card{ text-align:center; }
+.heart{ font-size:2.2rem; transition:transform .3s; }
+.toast{
+  position:fixed; bottom:calc(20px + env(safe-area-inset-bottom,0px)); left:50%; transform:translateX(-50%) translateY(20px);
+  background:var(--ink); color:var(--bg1); padding:10px 18px; border-radius:20px; font-size:.82rem;
+  opacity:0; transition:.3s; pointer-events:none;
+}
+.toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<h1>Our Garden</h1>
+<div class="sub">demo build — local only, syncs across devices once wired to Supabase</div>
+
+<div class="card">
+  <div class="row"><span>I am:</span>
+    <select id="who"><option value="you">You</option><option value="partner">Partner</option></select>
+  </div>
+</div>
+
+<div class="card">
+  <div class="qtext" id="qtext">Loading today's question…</div>
+  <textarea id="myAnswer" placeholder="Your answer…"></textarea>
+  <button id="submitBtn">Submit answer</button>
+  <div class="answers" id="answers"></div>
+</div>
+
+<div class="card pulse-card">
+  <div class="heart" id="heart">💗</div>
+  <button id="pulseBtn">Send "thinking of you"</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const QUESTIONS = [
+  "What's a small thing I did this week that you appreciated?",
+  "If we had a free day tomorrow, what would you want to do?",
+  "What's one memory of us you keep coming back to?",
+  "What's something you're looking forward to?",
+  "What's a song that reminds you of us right now?"
+];
+
+const $ = id => document.getElementById(id);
+const today = new Date().toISOString().slice(0,10);
+
+function load(key, fallback){ try{ return JSON.parse(localStorage.getItem(key)) ?? fallback; }catch{ return fallback; } }
+function save(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
+
+function questionForToday(){
+  const idx = Math.abs(hashCode(today)) % QUESTIONS.length;
+  return QUESTIONS[idx];
+}
+function hashCode(s){ let h=0; for(let i=0;i<s.length;i++){ h=(h<<5)-h+s.charCodeAt(i); h|=0; } return h; }
+
+function getState(){ return load('garden_state', { answers: {} }); }
+function setState(s){ save('garden_state', s); render(); }
+
+function render(){
+  const s = getState();
+  $('qtext').textContent = questionForToday();
+
+  const dayAnswers = s.answers[today] || {};
+  const who = $('who').value;
+  $('myAnswer').value = dayAnswers[who] || '';
+
+  const answersDiv = $('answers');
+  const bothAnswered = dayAnswers.you && dayAnswers.partner;
+  if(bothAnswered){
+    answersDiv.innerHTML =
+      `<div class="a"><b>You:</b> ${escapeHtml(dayAnswers.you)}</div>` +
+      `<div class="a"><b>Partner:</b> ${escapeHtml(dayAnswers.partner)}</div>`;
+  } else {
+    answersDiv.innerHTML = `<div class="locked">Answers unlock once you both submit 🔒</div>`;
+  }
+}
+function escapeHtml(str){ const d=document.createElement('div'); d.textContent=str; return d.innerHTML; }
+
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+$('who').addEventListener('change', render);
+
+$('submitBtn').addEventListener('click', () => {
+  const s = getState();
+  const who = $('who').value;
+  const text = $('myAnswer').value.trim();
+  if(!text) return;
+  s.answers[today] = s.answers[today] || {};
+  s.answers[today][who] = text;
+  setState(s);
+  toast('Answer saved');
+});
+
+$('pulseBtn').addEventListener('click', () => {
+  const heart = $('heart');
+  heart.style.transform = 'scale(1.4)';
+  setTimeout(()=> heart.style.transform = 'scale(1)', 300);
+  toast('Pulse sent 💗 (partner will feel it once notifications are wired up)');
+});
+
+render();
+</script>
+</body>
+</html>
